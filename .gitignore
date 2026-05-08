@@ -12,3 +12,10 @@ Module.symvers
 Module.markers
 .tmp_versions/
 target/
+.config/asciinema/
+.ssh/
+.bash_history
+.bash_logout
+.bashrc
+.gitconfig
+.profile
