@@ -99,15 +99,15 @@ sudo rmmod rustcounter
 
 ## Code Tour
 
-Start at init (line 27 of rustcounter.rs). The module's entry point logs a load message, registers a `MiscDeviceOptions` named `rustcounter`, and pins the registration into the module struct. The kernel creates the device node for you once the registration succeeds.
+Start at `init` (line 30 of rustcounter.rs). The module's entry point logs a load message, registers a `MiscDeviceOptions` named `rustcounter`, and pins the registration into the module struct. The kernel creates the device node for you once the registration succeeds.
 
-The interesting half is `write_iter`. The design of the code is so that any write counts as one increment, no matter what bytes were written, so the function `write_iter` does two jobs.
+The next interesting code block is `write_iter` (line 49). The design of the code is so that any write counts as one increment, no matter what bytes were written, so the function `write_iter` does two jobs.
 
 First, it drains the user's bytes into a local `KVec` via `iov.copy_from_iter_vec`. This isn't because we want the data, it's because the syscall's contract says the kernel consumed `n` bytes even though we don't want them. So by copying the input into the `kvec`, since it is a local variable, the `kvec` goes out of scope (and is freed) at end of function.
 
 Second, it runs `COUNT.fetch_add(1, Ordering::SeqCst) + 1`. `fetch_add` is the atomic read-modify-write: it returns the _previous_ value and atomically adds 1 to the stored value. The `+ 1` on the outside gets the _new_ value back for the `pr_info!` log line. On x86 this compiles down to a single `LOCK XADD` instruction; on ARM64 it's `ldaddal`. After the increment, it clears the `CONSUMED` flag so the next reader sees the new value.
 
-Finish at `read_iter`. The `CONSUMED.swap(true, SeqCst)` sets the flag to true and then returns the previous value. In the event that the flag was already true than the system returns Ok and ends the file. Without this, `cat` would loop forever on the same value. Below that, the count gets formatted into a `CString` and the `?`transmits any allocations error. `iov` copies the formatted bytes back to user space so multi-call reads complete the message cleanly.
+Finish at `read_iter` (line 62). The `CONSUMED.swap(true, SeqCst)` sets the flag to true and then returns the previous value. In the event that the flag was already true than the system returns Ok and ends the file. Without this, `cat` would loop forever on the same value. Below that, the count gets formatted into a `CString` and the `?`transmits any allocations error. `iov` copies the formatted bytes back to user space so multi-call reads complete the message cleanly.
 
 ## Design Notes
 
