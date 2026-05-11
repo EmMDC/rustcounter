@@ -54,6 +54,8 @@ You should see `core.o`, `alloc.o`, `kernel.o`, and `target.json`.
 
 Build the module:
 
+> ** Note: Make sure you are within the rustcounter folder when doing this command
+
 ```
 make
 ```
