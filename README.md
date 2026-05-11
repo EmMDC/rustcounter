@@ -6,8 +6,12 @@ _A Linux kernel module written in safe Rust that exposes a concurrent counter as
 
 Two terminals each firing 1,000 writes at `/dev/rustcounter` in parallel:
 
-![VM 1 — 1,000 concurrent writes](rustcounter/vm1.gif)
-![VM 2 — 1,000 concurrent writes](rustcounter/vm2.gif)
+<table>
+  <tr>
+    <td><img src="rustcounter/vm1.gif" alt="VM 1 — 1,000 concurrent writes" width="100%"></td>
+    <td><img src="rustcounter/vm2.gif" alt="VM 2 — 1,000 concurrent writes" width="100%"></td>
+  </tr>
+</table>
 
 After both loops finish, `cat` returns exactly 2,000 every single time without any issue! The equivalent C code with `count++` and no synchronization would lose increments and would not have the guaranteed 2000 of this rust version.In fact Rust's type system would refuse to compile it.
 
@@ -36,7 +40,7 @@ sudo apt install -y linux-lib-rust-$(uname -r)
 
 > **Note on the `linux-lib-rust` install.** On my Windows 11 + Multipass setup, running only apt commands without installing the Rust kernel support files gave me `error[E0463]: can't find crate for 'core'` when I tried to build a test skeleton module. Kernel Rust runs `no_std` and links against pre-compiled `core`, `alloc`, and `kernel` artifacts plus a custom `target.json` that describes the kernel's ABI. All of that lives at `/lib/modules/$(uname -r)/build/rust/`, and on my VM that directory was empty.
 >
-> The rustc error suggested `rustup target add ...`, but following that would install a second Rust toolchain and trigger the "compiler differs from the one used to build the kernel" error instead. Different error, same dead end. I tracked down the real fix by running `apt-cache search "linux.*rust"`, which surfaced `linux-lib-rust-7.0.0-14-generic`, a package that wasn't in the assignment's install list. Installing it populated the missing directory with `core.o`, `alloc.o`, `kernel.o`, and `target.json`, and the build went through clean.
+> The rustc error suggested `rustup target add ...`, but following that would install a second Rust toolchain and trigger the "compiler differs from the one used to build the kernel" error instead. I tracked down the real fix by running `apt-cache search "linux.*rust"`, which surfaced `linux-lib-rust-7.0.0-14-generic`, a package that wasn't installed through the initial toolchain. Installing it populated the missing directory with `core.o`, `alloc.o`, `kernel.o`, and `target.json`, and the build went through clean.
 >
 > Best guess at why it was missing: the 2024 to 2026 Rust-for-Linux API migration split the Rust artifacts out of `linux-headers-*` into their own package so C-only kernel devs don't have to download them, and the assignment's apt list didn't get updated to match. Nothing in the documented install line declares a dependency on `linux-lib-rust-*`, so apt has no reason to pull it in.
 
@@ -65,7 +69,31 @@ sudo cat /dev/rustcounter                        # → 2
 sudo rmmod rustcounter
 ```
 
-For the concurrent demo, open two `multipass shell` sessions and run `for i in {1..1000}; do echo bump | sudo tee /dev/rustcounter > /dev/null; done` in each. The final `cat` always returns exactly 2000. Ensure that both sessions complete. if you run cat preemptively while one is still running this will not show the complete 2000 number.
+For the concurrent demo, open two `shell` sessions and run `for i in {1..1000}; do echo bump | sudo tee /dev/rustcounter > /dev/null; done` in each. The final `cat` always returns exactly 2000. Ensure that both sessions complete. If you run cat preemptively while one is still running this will not show the complete 2000 number.
+
+Full command chain for the concurrent demo:
+
+Session 1
+
+```
+sudo insmod rustcounter.ko
+ls -la /dev/rustcounter
+sudo cat /dev/rustcounter                       # → "0"
+for i in {1..1000}; do echo bump | sudo tee /dev/rustcounter > /dev/null; done
+```
+
+Session 2
+
+```
+for i in {1..1000}; do echo bump | sudo tee /dev/rustcounter > /dev/null; done
+```
+
+After both sessions finish in either session run the following to get the counter results
+
+```
+sudo cat /dev/rustcounter                       # → "2000"
+sudo rmmod rustcounter
+```
 
 ## Code Tour
 
